@@ -10,7 +10,7 @@ void printEvent(MIDI_ev *ev) {
 }
 
 int main() {
-	MIDI *m = midi_open("cotb.mid");
+	MIDI *m = midi_open("we3kings.mid");
 	int i = 0;
 	if (m != NULL) {
 		printf("Format = %d\n", m->format);
