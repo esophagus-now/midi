@@ -190,13 +190,26 @@ static int readFFmessage(MIDI *m, int track_no) {
 		return -1;
 	}
 	
-	printf("\tSkipping %d byte FF message of type %x ", len, +type & 0xFF);
-	while (len --> 0) {
-		unsigned char c;
-		c = m->data[m->track_pos[track_no]++];
-		printf("%x ", (+c)&0xFF);
+	if (type == 0x51) {
+		//This is the only meta-event we care about (I think)
+		MIDI_ev *ev = m->events + m->num_ev++;
+		ev->type = TEMPO_CHANGE;
+		//Now read the three-byte tempo quantity, and fix endianness as we go
+		ev->data[3] = m->data[m->track_pos[track_no]++];
+		ev->data[2] = m->data[m->track_pos[track_no]++];
+		ev->data[1] = m->data[m->track_pos[track_no]++];
+		ev->data[0] = 0; 
+		//HACK: By doing it like this, someone reading the event can just treat
+		//the first four bytes of the event data as an unsigned.
+	} else {
+		printf("\tSkipping %d byte FF message of type %x ", len, +type & 0xFF);
+		while (len --> 0) {
+			unsigned char c;
+			c = m->data[m->track_pos[track_no]++];
+			printf("%x ", (+c)&0xFF);
+		}
+		printf("\n");
 	}
-	printf("\n");
 	
 	return 0;
 }
@@ -226,66 +239,103 @@ static int readEvent(MIDI *m, int track_no) {
 		puts("Unexpected EOF while reading event");\
 		return -1;\
 	}\
-	*(x) = (unsigned) m->data[m->track_pos[track_no]++]
+	*(x) = (unsigned char) m->data[m->track_pos[track_no]++]
 	
 	switch(status >> 4) {
 		case 8: {
-			printf("\tNote OFF on channel %d", status &0xF);
-			unsigned key;
-			unsigned vel;
-			readByte(&key);
-			readByte(&vel);
-			printf(", key = %u, vel = %u\n", key, vel);
+			//printf("\tNote OFF on channel %d", status &0xF);
+			//unsigned key;
+			//unsigned vel;
+			//readByte(&key);
+			//readByte(&vel);
+			//printf(", key = %u, vel = %u\n", key, vel);
+			MIDI_ev *ev = m->events + m->num_ev++;
+			ev->type = NOTE_OFF;
+			ev->channel = status &0xF;
+			readByte(ev->data); //key
+			readByte(ev->data + 1); //vel
 			break;
 		}
 		case 9: {
-			printf("\tNote ON on channel %d", status &0xF);
-			unsigned key;
-			unsigned vel;
+			//printf("\tNote ON on channel %d", status &0xF);
+			//unsigned key;
+			//unsigned vel;
+			//readByte(&key);
+			//readByte(&vel);
+			//printf(", key = %u, vel = %u\n", key, vel);
+			MIDI_ev *ev = m->events + m->num_ev++;
+			unsigned char key;
+			unsigned char vel; //Special case: some MIDI files write
 			readByte(&key);
-			readByte(&vel);
-			printf(", key = %u, vel = %u\n", key, vel);
+			readByte(&vel); //a vel of 0 to indiciate NOTE OFF
+			ev->type = (vel != 0) ? NOTE_ON : NOTE_OFF;
+			ev->channel = status &0xF;
+			ev->data[0] = key;
+			ev->data[1] = vel;
 			break;
 		}
 		case 10: {
-			printf("\tNote AFTERTOUCH(?) on channel %d", status &0xF);
-			unsigned key;
-			unsigned vel;
-			readByte(&key);
-			readByte(&vel);
-			printf(", key = %u, vel = %u\n", key, vel);
+			//printf("\tNote AFTERTOUCH(?) on channel %d", status &0xF);
+			//unsigned key;
+			//unsigned vel;
+			//readByte(&key);
+			//readByte(&vel);
+			//printf(", key = %u, vel = %u\n", key, vel);
+			MIDI_ev *ev = m->events + m->num_ev++;
+			ev->type = AFTERTOUCH;
+			ev->channel = status &0xF;
+			readByte(ev->data); //key
+			readByte(ev->data + 1); //vel
 			break;
 		}
 		case 11: {
-			printf("\tCONTROL CHANGE on channel %d", status &0xF);
-			unsigned ctl;
-			unsigned val;
-			readByte(&ctl);
-			readByte(&val);
-			printf(", ctl = %u, val = %u\n", ctl, val);
+			//printf("\tCONTROL CHANGE on channel %d", status &0xF);
+			//unsigned ctl;
+			//unsigned val;
+			//readByte(&ctl);
+			//readByte(&val);
+			//printf(", ctl = %u, val = %u\n", ctl, val);
+			MIDI_ev *ev = m->events + m->num_ev++;
+			ev->type = CONTROL_CHANGE;
+			ev->channel = status &0xF;
+			readByte(ev->data); //ctl
+			readByte(ev->data + 1); //val
 			break;
 		}
 		case 12: {
-			printf("\tPROGRAM CHANGE on channel %d", status &0xF);
-			unsigned prog;
-			readByte(&prog);
-			printf(", prog = %u\n", prog);
+			//printf("\tPROGRAM CHANGE on channel %d", status &0xF);
+			//unsigned prog;
+			//readByte(&prog);
+			//printf(", prog = %u\n", prog);
+			MIDI_ev *ev = m->events + m->num_ev++;
+			ev->type = PROGRAM_CHANGE;
+			ev->channel = status &0xF;
+			readByte(ev->data); //prog
 			break;
 		}
 		case 13: {
-			printf("\tNote AFTERTOUCH(?) on channel %d", status &0xF);
-			unsigned vel;
-			readByte(&vel);
-			printf(", vel = %u\n", vel);
+			//printf("\tNote AFTERTOUCH(?) on channel %d", status &0xF);
+			//unsigned vel;
+			//readByte(&vel);
+			//printf(", vel = %u\n", vel);
+			MIDI_ev *ev = m->events + m->num_ev++;
+			ev->type = AFTERTOUCH;
+			ev->channel = status &0xF;
+			readByte(ev->data); //vel
 			break;
 		}
 		case 14: {
-			printf("\tPITCH WHEEL CHANGE on channel %d", status &0xF);
-			unsigned lo;
-			unsigned hi;
-			readByte(&lo);
-			readByte(&hi);
-			printf(", lo = %u, hi = %u\n", lo, hi);
+			//printf("\tPITCH WHEEL CHANGE on channel %d", status &0xF);
+			//unsigned lo;
+			//unsigned hi;
+			//readByte(&lo);
+			//readByte(&hi);
+			//printf(", lo = %u, hi = %u\n", lo, hi);
+			MIDI_ev *ev = m->events + m->num_ev++;
+			ev->type = PITCH_WHEEL;
+			ev->channel = status &0xF;
+			readByte(ev->data); //lo
+			readByte(ev->data + 1); //hi
 			break;
 		}
 		case 15: {
@@ -309,17 +359,18 @@ static int readEvent(MIDI *m, int track_no) {
 					unsigned hi;
 					readByte(&lo);
 					readByte(&hi);
-					printf("\tSong position pointer, lo = %u, hi = %u\n", hi, lo);
+					printf("\tSong position pointer, lo = %u, hi = %u (ignored)\n", hi, lo);
 					break;
 				}
 				case 3: {
 					unsigned song;
 					readByte(&song);
-					printf("\tSong select, song = %u\n", song);
+					printf("\tSong select, song = %u (ignored)\n", song);
 					break;
 				}
 				case 0: {
-					printf("\tSysex message\n");
+					//TODO: Maybe use these inside MIDI files to configure the synth?
+					printf("\tSysex message (ignored)\n");
 					unsigned code = 0xF7;
 					do {
 						readByte(&code);
@@ -447,6 +498,7 @@ void midi_close(MIDI *m) {
 //Returns negative on error
 int step_ticks(MIDI *m, int ticks) {
 	m->num_ev = 0; //Empty the internal event queue.
+	m->ev_pos = 0;
 	//If the user has unread events, too bad! By stepping time they have
 	//declared that they want to ignore them
 	
@@ -471,7 +523,10 @@ int step_ticks(MIDI *m, int ticks) {
 				//and there is no dt left to read. We will exit this
 				//function gracefully if that is the case
 				
-				if (m->track_pos[i] >= m->track_end[i]) break;
+				if (m->track_pos[i] >= m->track_end[i]) {
+					finished--;
+					break;
+				}
 				
 				unsigned dt;
 				tmp = readVarLength(m, i, &dt);
@@ -489,32 +544,19 @@ int step_ticks(MIDI *m, int ticks) {
 		}
 	}
 	
+	//TODO: reorder event queue so NOTE_OFF events happen first
 	return finished;
 }
 
-//TODO: Change this to actually return an event. For now it's just dumping
-//all the data from the MIDI file
+//Returns number of events read (i.e. 0 or 1)
+//Should enable you to write while(getEvent(m, &ev)) {do_something_with(ev);}
 //Returns negative on error
-int getEvent(MIDI *m, MIDI_ev *ev) {
-	int i;
-	for (i = 0; i < m->tracks; i++) {
-		printf("PARSING TRACK %d\n", i);
-		while(m->track_pos[i] < m->track_end[i]) {
-			unsigned dt;
-			int tmp = readVarLength(m, i, &dt);
-			if (tmp < 0) {
-				printf("Error reading dt in track %d\n", i);
-				return -1;
-			}
-			printf("dt = %4u\n", dt);
-			
-			tmp = readEvent(m, i);
-			if (tmp < 0) {
-				printf("Error reading event in track %d\n", i);
-				return -1;
-			}
-		}
+int getEvent(MIDI *m, MIDI_ev **ev) {
+	if (m->ev_pos == m->num_ev) {
+		m->ev_pos = 0;
+		return 0;
 	}
 	
-	return 0;
+	*ev = m->events + m->ev_pos++;
+	return 1;
 }

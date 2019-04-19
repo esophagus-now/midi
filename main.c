@@ -2,6 +2,13 @@
 #include <stdio.h>
 #include <string.h>
 
+void printEvent(MIDI_ev *ev) {
+	printf("Event type = %s\n", event_names[ev->type]);
+	if (ev->type == NOTE_ON || ev->type == NOTE_OFF) {
+		printf("\tkey = %u, vel = %u\n", +ev->data[0] & 0xFF, + ev->data[1] & 0xFF);
+	}
+}
+
 int main() {
 	MIDI *m = midi_open("cotb.mid");
 	int i = 0;
@@ -16,6 +23,11 @@ int main() {
 			} else if (tmp == 0) {
 				puts("File finished reading succesfully");
 				break;
+			}
+			
+			MIDI_ev *ev;
+			while (getEvent(m, &ev)) {
+				printEvent(ev);
 			}
 		}
 	} else {

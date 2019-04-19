@@ -7,19 +7,20 @@
 #define MAX_EVENTS 128
 
 
-#define EVENT_TYPES X(NOTE_ON), X(NOTE_OFF), X(PROGRAM_CHANGE), X(CONTROL_CHANGE), X(SYSEX), X(TEMPO_CHANGE)
+#define EVENT_TYPES X(NOTE_ON), X(NOTE_OFF), X(PROGRAM_CHANGE), X(CONTROL_CHANGE), X(SYSEX), X(TEMPO_CHANGE), X(AFTERTOUCH), X(PITCH_WHEEL)
 
 typedef enum {
 #define X(x) x
 EVENT_TYPES
 #undef X
-} MIDI_ev_t;
+} MIDI_ev_type;
 
 extern char *event_names[];
 
 typedef struct {
-	MIDI_ev_t ev_type;
-	unsigned char ev_data;
+	MIDI_ev_type type;
+	unsigned char channel;
+	unsigned char data[4]; //Note: may need to make this bigger if we want to use sysex messages to configure the voices
 } MIDI_ev;
 
 typedef struct {
@@ -56,7 +57,7 @@ void midi_close(MIDI *m);
 int step_ticks(MIDI *m, int ticks);
 
 //Returns number of events read (i.e. 0 or 1)
-int getEvent(MIDI *m, MIDI_ev *ev);
+int getEvent(MIDI *m, MIDI_ev **ev);
 //Should enable you to write while(getEvent(m, &ev)) {do_something_with(ev);}
 
 #endif
