@@ -4,9 +4,23 @@
 
 int main() {
 	MIDI *m = midi_open("cotb.mid");
-	if (m != NULL) printf("Format = %d\n", m->format);
-	getEvent(m, NULL);
+	int i = 0;
+	if (m != NULL) {
+		printf("Format = %d\n", m->format);
+		while (1) {
+			printf("================Time = %d================\n", i++);
+			int tmp = step_ticks(m, 1);
+			if (tmp < 0) {
+				puts("An error occurred while stepping through the MIDI file");
+				break;
+			} else if (tmp == 0) {
+				puts("File finished reading succesfully");
+				break;
+			}
+		}
+	} else {
+		puts("MIDI file not read");
+	}
 	midi_close(m);
-	puts("done");
 	return 0;
 }

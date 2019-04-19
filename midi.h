@@ -40,7 +40,8 @@ typedef struct {
 	unsigned char running_status[MAX_TRACKS];
 	
 	//Internal queue of events
-	int num_ev;
+	int num_ev; //Number of events in the array
+	int ev_pos; //User's "cursor" into the events array
 	MIDI_ev events[MAX_EVENTS];
 } MIDI;
 
@@ -52,7 +53,7 @@ void midi_close(MIDI *m);
 //Tells MIDI object how many ticks have elapsed. Although I don't plan to use
 //this technique, this would allow more complex user code to gracefulyl handle
 //the case when a tick signal is missed
-void step_ticks(MIDI *m, int ticks);
+int step_ticks(MIDI *m, int ticks);
 
 //Returns number of events read (i.e. 0 or 1)
 int getEvent(MIDI *m, MIDI_ev *ev);

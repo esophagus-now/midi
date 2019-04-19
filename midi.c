@@ -55,6 +55,38 @@ static int readUint16(FILE *fp, unsigned *result) {
 	return 0;
 }
 
+//Reads a variable length quantity (as defined by the midi standard) into the
+//value pointed at by res
+//It's not used anymore, but the old version of this function returned the
+//number of bytes read. I saw no reason to remove it
+static int readVarLength(MIDI *m, int track_no, unsigned *res) {
+	char c;
+	*res = 0;
+	
+	int bytes = 0;
+	while (1) {
+		if (m->track_pos[track_no] == m->len) {
+			puts("Unexpected EOF");
+			return -1;
+		}
+		c = m->data[m->track_pos[track_no]++];
+		
+		char toAdd = c & 0b01111111;
+		*res <<= 7;
+		*res |= toAdd;
+		bytes++;
+		if (bytes == 5) {
+			puts("Error: variable length quantity is too long");
+			return -1;
+		}
+		
+		if (toAdd == c) break; //Done reading number
+	}
+	
+	return bytes;
+}
+
+
 //Read MIDI format number, number of tracks, and divisions per quarter note
 //into correct places in MIDI struct. Returns negative on error
 static int parseHeader(FILE *fp, MIDI *m) {	
@@ -120,7 +152,13 @@ static int parseTrack(MIDI *m, int track_no, int *pos) {
 	
 	m->track_end[track_no] = un.res + *pos;
 	m->track_pos[track_no] = *pos;
-	m->deltas[track_no] = 0;
+	
+	//Initialize the first track delta
+	unsigned dt;
+	int tmp = readVarLength(m, track_no, &dt);
+	if (tmp < 0) goto parseTrack_failed;
+	
+	m->deltas[track_no] = dt;
 	
 	*pos += un.res;
 	
@@ -131,37 +169,6 @@ static int parseTrack(MIDI *m, int track_no, int *pos) {
 	return -1;
 }
 
-//Reads a variable length quantity (as defined by the midi standard) into the
-//value pointed at by res
-//It's not used anymore, but the old version of this function returned the
-//number of bytes read. I saw no reason to remove it
-static int readVarLength(MIDI *m, int track_no, unsigned *res) {
-	char c;
-	*res = 0;
-	
-	int bytes = 0;
-	while (1) {
-		if (m->track_pos[track_no] == m->len) {
-			puts("Unexpected EOF");
-			return -1;
-		}
-		c = m->data[m->track_pos[track_no]++];
-		
-		char toAdd = c & 0b01111111;
-		*res <<= 7;
-		*res |= toAdd;
-		bytes++;
-		if (bytes == 5) {
-			puts("Error: variable length quantity is too long");
-			return -1;
-		}
-		
-		if (toAdd == c) break; //Done reading number
-	}
-	
-	return bytes;
-}
-
 //Parses a MIDI meta-event. Returns negative on error
 static int readFFmessage(MIDI *m, int track_no) {
 	//FF message types to care about:
@@ -169,7 +176,7 @@ static int readFFmessage(MIDI *m, int track_no) {
 	//	0x51: Tempo. Three bytes, representing microseconds per quarter note
 	//	Also remember the divisions member of the header, which is number of ticks per quarter note
 	
-	unsigned type = m->track_pos[track_no]++;
+	unsigned char type = m->data[m->track_pos[track_no]++];
 	
 	unsigned len;
 	int tmp = readVarLength(m, track_no, &len);
@@ -432,6 +439,59 @@ void midi_close(MIDI *m) {
 	free(m);
 }
 
+//Steps all the deltas. If any go zero or negative, that means we need to add
+//this event to the internal queue. At the end we'll reorder the queue so that
+//note OFF events always occur first
+//Returns positive if the file is not finished
+//Returns 0 if file is finished
+//Returns negative on error
+int step_ticks(MIDI *m, int ticks) {
+	m->num_ev = 0; //Empty the internal event queue.
+	//If the user has unread events, too bad! By stepping time they have
+	//declared that they want to ignore them
+	
+	int finished = m->tracks;
+	
+	int i;
+	for (i = 0; i < m->tracks; i++) {
+		if (m->track_pos[i] >= m->track_end[i]) {
+			finished--; //This track is finished
+			continue;
+		}
+		m->deltas[i] -= ticks;
+		if (m->deltas[i] <= 0) {
+			while (m->track_pos[i] < m->track_end[i]) {
+				int tmp = readEvent(m, i);
+				if (tmp < 0) {
+					printf("Error reading event in track %d\n", i);
+					return -1;
+				}
+				
+				//At this point, we have reached the end of the track
+				//and there is no dt left to read. We will exit this
+				//function gracefully if that is the case
+				
+				if (m->track_pos[i] >= m->track_end[i]) break;
+				
+				unsigned dt;
+				tmp = readVarLength(m, i, &dt);
+				if (tmp < 0) {
+					printf("Error reading dt in track %d\n", i);
+					return -1;
+				}
+				//printf("dt = %4u\n", dt);
+				
+				if (dt != 0) { //Done reading events at this time
+					m->deltas[i] += dt;
+					break;
+				}
+			}
+		}
+	}
+	
+	return finished;
+}
+
 //TODO: Change this to actually return an event. For now it's just dumping
 //all the data from the MIDI file
 //Returns negative on error
@@ -446,7 +506,7 @@ int getEvent(MIDI *m, MIDI_ev *ev) {
 				printf("Error reading dt in track %d\n", i);
 				return -1;
 			}
-			printf("dt = %4u ", dt);
+			printf("dt = %4u\n", dt);
 			
 			tmp = readEvent(m, i);
 			if (tmp < 0) {
