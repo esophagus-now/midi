@@ -11,13 +11,13 @@ The basic objects here are a MIDI event and a MIDI context struct. The definitio
 ```c
 typedef enum {
 	NOTE_ON,
-    NOTE_OFF,
-    PROGRAM_CHANGE,
-    CONTROL_CHANGE,
-    SYSEX,
-    TEMPO_CHANGE,
-    AFTERTOUCH,
-    PITCH_WHEEL
+	NOTE_OFF,
+	PROGRAM_CHANGE,
+	CONTROL_CHANGE,
+	SYSEX,
+	TEMPO_CHANGE,
+	AFTERTOUCH,
+	PITCH_WHEEL
 } MIDI_ev_type;
 
 typedef struct {
@@ -28,7 +28,7 @@ typedef struct {
 
 typedef struct {
 	unsigned format;
-	unsigned divisions; //us per quarter note
+	unsigned divisions; //ticks per quarter note
 	unsigned tracks;
 	
 	//...
